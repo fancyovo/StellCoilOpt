@@ -1,0 +1,32 @@
+[project]
+name = "stellcoilopt"
+version = "0.1.0"
+description = "GPU-native stellarator coil evaluation and flow-latent optimization."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "fancyovo"}]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+train = ["torch>=2.5", "matplotlib>=3.7"]
+simsopt = ["simsopt"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+stellcoilopt-eval = "stellarator_eval.cli:main"
+
+[project.urls]
+Repository = "https://github.com/fancyovo/StellCoilOpt"
+Issues = "https://github.com/fancyovo/StellCoilOpt/issues"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stellarator_eval*", "flow_matching*", "scripts*"]
