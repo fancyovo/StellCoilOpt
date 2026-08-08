@@ -236,7 +236,7 @@ def evaluator():
         fill=COLORS["red"],
         edge=COLORS["red_edge"],
     )
-    arrow(ax, (0.58, 0.66), (0.23, 0.27), label="selected candidate surface", curve=0.10)
+    arrow(ax, (0.745, 0.66), (0.23, 0.27))
     arrow(ax, (0.32, 0.175), (0.40, 0.175))
     arrow(ax, (0.58, 0.175), (0.66, 0.175))
     ax.text(0.02, 0.04, "Fast path: fixed work budgets and linear solves.  Full validation is a separate acceptance path.", fontsize=9, color=COLORS["muted"])
