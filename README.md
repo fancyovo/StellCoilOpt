@@ -15,7 +15,7 @@
 - `evaluation/full_physical/`：从候选面中选择最大连续可接受磁面的规则与完整评估顺序。
 - `tests/`：不依赖项目数据或模型权重的单元测试。
 
-仓库不包含数据集、训练权重、运行结果、benchmark、集群提交脚本、历史探索记录或私有基础设施配置。
+仓库不包含数据集、训练权重、原始 benchmark 结果、运行日志、集群提交脚本、历史探索记录或私有基础设施配置。下文仅保留一张汇总后的性能图，用于说明当前实现的耗时结构。
 
 ## 方法主线
 
@@ -26,8 +26,8 @@
 1. 对一个场周期的 Poincare 映射批量求固定点，并保留满足椭圆拓扑条件的磁轴。
 2. 在磁轴附近拟合满足 $\mathbf B\cdot\nabla s\approx0$ 的多项式-Fourier 不变量；固定 $X^2$ 的常数 Fourier 系数为 1，消除齐次方程的零解与尺度规范。
 3. 沿极射线求 $s$ 等值面，追踪磁力线筛选可用外层面，并用环向磁通 $\Phi_t/(2\pi)$ 把 $s$ 标定为 $\psi$。
-4. 在体采样点上以线性最小二乘拟合 $\alpha=\theta+\lambda-\iota\phi$，计算体 QS 残差与工程量。
-5. 将磁轴、$\psi$、磁面、坐标、体 QS、$\iota$ 和线圈工程七部分合成为 $[0,100]$ 分数，并显式返回失败状态。
+4. 在体采样点上以向量最小二乘拟合 $\mathbf B\approx\nabla\psi\times\nabla\alpha$，其中 $\alpha=\theta+\lambda-\iota\phi$，随后计算体 QS 残差与工程量。
+5. 将磁轴、 $\psi$、磁面、坐标、体 QS、 $\iota$ 和线圈工程七部分合成为 $[0,100]$ 分数，并显式返回失败状态。
 
 完整物理接受是独立路径：从候选面构造 $\alpha+\nu$ 初值，运行 Simsopt 标准最小二乘与 Newton，随后检查独立稠密网格、Poincare、坐标正则性、体积单调性和 DESC。快速分数不能替代这一步。
 
@@ -43,7 +43,7 @@ python -m pip install -U pip
 python -m pip install -e ".[plot,dev]"
 ```
 
-训练 Flow 需要 `.[train]`；标准 Boozer 面和完整验证需要 `.[simsopt]`，DESC 需按其官方安装方式另行安装。原生评分器需要支持 C++17/CUDA 17 的编译器、CMake 3.22+、CUDA Toolkit、cuBLAS 和 cuSOLVER。
+训练 Flow 需要 `.[train]`；标准 Boozer 面和完整验证需要 `.[simsopt]`，DESC 需按其官方安装方式另行安装。原生评分器需要支持 C++17 的主机编译器、CMake 3.22+、CUDA Toolkit、cuBLAS 和 cuSOLVER。
 
 ## 构建 CUDA 后端
 
@@ -92,6 +92,12 @@ python scripts/smoke_native_score.py examples/01.json \
 
 批量评分入口为 `scripts/batch_native_score.py`。它支持按 worker 索引分片，适合由外部任务系统启动一个持久进程对应一块 GPU；仓库不绑定任何特定调度器。
 
+## 性能 benchmark
+
+![原生评分器端到端耗时、阶段构成与长尾分布](docs/assets/benchmark-runtime.png)
+
+图中汇总 1024 个 QUASR QH 样本在两张 RTX 5090 上的当前原生评分耗时。`global axis` 对每个独立样本执行全局磁轴搜索；`strict hint` 用于局部优化端点，只允许沿用中心样本已验证的磁轴分支，分支丢失即失败，不切换到另一根磁轴。1013 个可配对样本的单次调用耗时中位数分别为 2.85 s 和 0.97 s，配对中位加速为 2.99 倍。箱图与右侧尾分布表明严格延续同时降低典型耗时并收缩长尾；中间的阶段分解显示主要节省来自磁轴搜索，其余评分阶段的工作量基本不变。
+
 ## Flow Matching
 
 数据导出、校验、训练和反演是分离步骤：
@@ -114,7 +120,7 @@ python scripts/invert_qh_flow_latents.py \
   --output-dir runs/inverted
 ```
 
-训练目标使用直线概率路径 $x_t=(1-t)z+t x$ 和速度目标 $x-z$。默认 Transformer 对线圈 token 不加位置编码，因此线圈排列不改变模型含义；$N_{\rm FP}$ 通过条件嵌入输入。ODE 使用同一速度场正向生成、反向求潜变量。
+训练目标使用直线概率路径 $x_t=(1-t)z+t x$ 和速度目标 $x-z$。默认 Transformer 对线圈 token 不加位置编码，因此线圈排列不改变模型含义； $N_{\rm FP}$ 通过条件嵌入输入。ODE 使用同一速度场正向生成、反向求潜变量。
 
 ## 潜空间黑箱优化
 

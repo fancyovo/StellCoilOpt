@@ -37,6 +37,34 @@ def setup(width: float, height: float):
     return fig, ax
 
 
+def fitted_text(
+    ax,
+    x,
+    y,
+    value,
+    *,
+    max_width,
+    max_height,
+    fontsize,
+    min_fontsize,
+    **kwargs,
+):
+    artist = ax.text(x, y, value, fontsize=fontsize, **kwargs)
+    renderer = ax.figure.canvas.get_renderer()
+    axes_bbox = ax.get_window_extent(renderer)
+
+    while artist.get_fontsize() > min_fontsize:
+        bbox = artist.get_window_extent(renderer)
+        if bbox.width <= axes_bbox.width * max_width and bbox.height <= axes_bbox.height * max_height:
+            break
+        artist.set_fontsize(max(min_fontsize, artist.get_fontsize() - 0.25))
+
+    bbox = artist.get_window_extent(renderer)
+    if bbox.width > axes_bbox.width * max_width or bbox.height > axes_bbox.height * max_height:
+        raise ValueError(f"text does not fit its box: {value!r}")
+    return artist
+
+
 def box(ax, x, y, w, h, title, subtitle="", *, fill, edge):
     patch = FancyBboxPatch(
         (x, y),
@@ -48,24 +76,34 @@ def box(ax, x, y, w, h, title, subtitle="", *, fill, edge):
         edgecolor=edge,
     )
     ax.add_patch(patch)
-    ax.text(
+    multiline_title = "\n" in title
+    fitted_text(
+        ax,
         x + w / 2,
-        y + h * (0.59 if subtitle else 0.50),
+        y + h * (0.65 if subtitle and multiline_title else 0.59 if subtitle else 0.50),
         title,
+        max_width=w - 0.015,
+        max_height=h * (0.46 if multiline_title else 0.34),
+        fontsize=11,
+        min_fontsize=7.5,
         ha="center",
         va="center",
-        fontsize=11,
         fontweight="semibold",
         color=COLORS["ink"],
+        linespacing=1.05,
     )
     if subtitle:
-        ax.text(
+        fitted_text(
+            ax,
             x + w / 2,
-            y + h * 0.29,
+            y + h * (0.22 if multiline_title else 0.29),
             subtitle,
+            max_width=w - 0.015,
+            max_height=h * (0.34 if multiline_title else 0.42),
+            fontsize=8.2,
+            min_fontsize=6.4,
             ha="center",
             va="center",
-            fontsize=8.2,
             color=COLORS["muted"],
             linespacing=1.25,
         )
@@ -100,16 +138,17 @@ def save(fig, name):
 def overview():
     fig, ax = setup(10.8, 4.0)
     nodes = [
-        (0.025, "Latent $z$", "Gaussian reference\nconditioned by $N_{FP}$", "violet", "violet_edge"),
-        (0.225, "Flow ODE", "$\\dot x=v_\\theta(x,t)$\nforward or inverse", "blue", "blue_edge"),
-        (0.425, "Coil tokens", "$x,y,z$ Fourier coefficients\nand current", "green", "green_edge"),
-        (0.625, "GPU evaluator", "axis $\\to s \\to \\psi \\to \\alpha$\nvolume QS + engineering", "yellow", "yellow_edge"),
-        (0.825, "Score $S$", "larger is better\nstatus + diagnostics", "red", "red_edge"),
+        (0.010, "Latent $z$", "Gaussian reference\nconditioned by $N_{FP}$", "violet", "violet_edge"),
+        (0.210, "Flow ODE", "$\\dot x=v_\\theta(x,t)$\nforward or inverse", "blue", "blue_edge"),
+        (0.410, "Coil tokens", "$x,y,z$ Fourier\ncoefficients + current", "green", "green_edge"),
+        (0.610, "GPU evaluator", "axis $\\to s \\to \\psi \\to \\alpha$\nQS volume + engineering", "yellow", "yellow_edge"),
+        (0.810, "Score $S$", "larger is better\nstatus + diagnostics", "red", "red_edge"),
     ]
+    node_width = 0.17
     for x, title, subtitle, fill, edge in nodes:
-        box(ax, x, 0.50, 0.15, 0.28, title, subtitle, fill=COLORS[fill], edge=COLORS[edge])
-    for left in (0.175, 0.375, 0.575, 0.775):
-        arrow(ax, (left, 0.64), (left + 0.05, 0.64))
+        box(ax, x, 0.50, node_width, 0.28, title, subtitle, fill=COLORS[fill], edge=COLORS[edge])
+    for (x0, *_), (x1, *_) in zip(nodes[:-1], nodes[1:]):
+        arrow(ax, (x0 + node_width, 0.64), (x1, 0.64))
 
     box(
         ax,
@@ -125,11 +164,11 @@ def overview():
     arrow(ax, (0.70, 0.50), (0.70, 0.30), style="-|>")
     arrow(
         ax,
-        (0.90, 0.50),
-        (0.10, 0.50),
+        (0.90, 0.78),
+        (0.10, 0.78),
         label="finite-difference score ascent updates $z$",
         color=COLORS["red_edge"],
-        curve=-0.28,
+        curve=0.08,
     )
     save(fig, "overview.png")
 
@@ -143,7 +182,7 @@ def evaluator():
         ("Magnetic axis", "Poincare fixed point\n+ elliptic topology", "blue", "blue_edge"),
         ("Fitted $s$", "$\\mathbf{B}\\cdot\\nabla s\\approx0$\nquadratic gauge fixed", "violet", "violet_edge"),
         ("Calibrated $\\psi$", "toroidal flux / $2\\pi$\nouter level screening", "yellow", "yellow_edge"),
-        ("$\\alpha,\\iota$ fit", "$\\mathbf{B}\\cdot\\nabla\\alpha\\approx0$\nvolume least squares", "blue", "blue_edge"),
+        ("$\\alpha,\\iota$ fit", "$\\nabla\\psi\\times\\nabla\\alpha\\approx\\mathbf{B}$\nvector least squares", "blue", "blue_edge"),
         ("Volume QS", "$f_C$ over the volume\nweighted radial bins", "red", "red_edge"),
     ]
     for x, (title, subtitle, fill, edge) in zip(xs, labels):
@@ -158,7 +197,7 @@ def evaluator():
         0.235,
         0.17,
         "Screening score",
-        "seven normalized components + QH gates\nstatus is explicit on early failure",
+        "7 normalized components + QH gates\nexplicit status on early failure",
         fill=COLORS["gray"],
         edge=COLORS["line"],
     )
@@ -209,7 +248,7 @@ def optimization():
     box(ax, 0.025, 0.58, 0.19, 0.22, "Current latent $z_t$", "one center state", fill=COLORS["violet"], edge=COLORS["violet_edge"])
     box(ax, 0.30, 0.70, 0.16, 0.18, "$z_t+c u_j$", "positive probes", fill=COLORS["blue"], edge=COLORS["blue_edge"])
     box(ax, 0.30, 0.40, 0.16, 0.18, "$z_t-c u_j$", "negative probes", fill=COLORS["blue"], edge=COLORS["blue_edge"])
-    box(ax, 0.56, 0.55, 0.16, 0.24, "Flow + evaluator", "$F(z)$ then $S(F(z))$\nparallel endpoint batches", fill=COLORS["yellow"], edge=COLORS["yellow_edge"])
+    box(ax, 0.56, 0.55, 0.16, 0.24, "Flow decode\n+ GPU score", "$x=F(z)$, then $S(x)$\nparallel endpoint batches", fill=COLORS["yellow"], edge=COLORS["yellow_edge"])
     box(ax, 0.80, 0.55, 0.16, 0.24, "Adam ascent", "$\\hat g$ from centered secants\nvalidate center branch", fill=COLORS["green"], edge=COLORS["green_edge"])
     arrow(ax, (0.215, 0.70), (0.30, 0.78), label="+$c u_j$", curve=-0.08)
     arrow(ax, (0.215, 0.66), (0.30, 0.49), label="-$c u_j$", curve=0.08)
