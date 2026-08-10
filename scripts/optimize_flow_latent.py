@@ -556,7 +556,7 @@ def main() -> None:
             overrides.update(
                 {
                     "axis_hint_enabled": 1,
-                    "axis_hint_require_continuation": 1,
+                    "axis_hint_require_continuation": 2,
                     "axis_hint_R": axis_r,
                     "axis_hint_Z": axis_z,
                 }

@@ -834,39 +834,68 @@ bool find_axis_native(
                 domain.r_max - domain.r_min, domain.z_max - domain.z_min
             );
             const double h = std::max(config.axis_fd_absolute, config.axis_fd_relative * span);
-            std::vector<double> verify_R{
-                candidates[0].R,
-                std::min(domain.r_max, candidates[0].R + h),
-                std::max(domain.r_min, candidates[0].R - h),
-                candidates[0].R,
-                candidates[0].R,
-            };
-            std::vector<double> verify_Z{
-                candidates[0].Z,
-                candidates[0].Z,
-                candidates[0].Z,
-                std::min(domain.z_max, candidates[0].Z + h),
-                std::max(domain.z_min, candidates[0].Z - h),
-            };
-            std::vector<double> end_R, end_Z;
-            substage_started = Clock::now();
-            if (!trace_map(
-                    field, verify_R, verify_Z, nfp, config.axis_trace_steps,
-                    true, end_R, end_Z)) {
-                return false;
+            if (config.axis_hint_require_continuation == 2) {
+                std::vector<double> verify_R{
+                    std::min(domain.r_max, candidates[0].R + h),
+                    std::max(domain.r_min, candidates[0].R - h),
+                    candidates[0].R,
+                    candidates[0].R,
+                };
+                std::vector<double> verify_Z{
+                    candidates[0].Z,
+                    candidates[0].Z,
+                    std::min(domain.z_max, candidates[0].Z + h),
+                    std::max(domain.z_min, candidates[0].Z - h),
+                };
+                std::vector<double> end_R, end_Z;
+                substage_started = Clock::now();
+                if (!trace_map(
+                        field, verify_R, verify_Z, nfp, config.axis_trace_steps,
+                        false, end_R, end_Z)) {
+                    return false;
+                }
+                timings[SGPU_SCORE_TIME_AXIS_TOPOLOGY] += seconds_since(substage_started);
+                assign_axis_topology(
+                    candidates[0],
+                    verify_R[0], verify_R[1], verify_Z[2], verify_Z[3],
+                    end_R[0], end_R[1], end_Z[0], end_Z[1],
+                    end_R[2], end_R[3], end_Z[2], end_Z[3]
+                );
+            } else {
+                std::vector<double> verify_R{
+                    candidates[0].R,
+                    std::min(domain.r_max, candidates[0].R + h),
+                    std::max(domain.r_min, candidates[0].R - h),
+                    candidates[0].R,
+                    candidates[0].R,
+                };
+                std::vector<double> verify_Z{
+                    candidates[0].Z,
+                    candidates[0].Z,
+                    candidates[0].Z,
+                    std::min(domain.z_max, candidates[0].Z + h),
+                    std::max(domain.z_min, candidates[0].Z - h),
+                };
+                std::vector<double> end_R, end_Z;
+                substage_started = Clock::now();
+                if (!trace_map(
+                        field, verify_R, verify_Z, nfp, config.axis_trace_steps,
+                        true, end_R, end_Z)) {
+                    return false;
+                }
+                timings[SGPU_SCORE_TIME_AXIS_FP64_VERIFY] += seconds_since(substage_started);
+                candidates[0].residual = std::hypot(
+                    end_R[0] - verify_R[0], end_Z[0] - verify_Z[0]
+                );
+                substage_started = Clock::now();
+                assign_axis_topology(
+                    candidates[0],
+                    verify_R[1], verify_R[2], verify_Z[3], verify_Z[4],
+                    end_R[1], end_R[2], end_Z[1], end_Z[2],
+                    end_R[3], end_R[4], end_Z[3], end_Z[4]
+                );
+                timings[SGPU_SCORE_TIME_AXIS_TOPOLOGY] += seconds_since(substage_started);
             }
-            timings[SGPU_SCORE_TIME_AXIS_FP64_VERIFY] += seconds_since(substage_started);
-            candidates[0].residual = std::hypot(
-                end_R[0] - verify_R[0], end_Z[0] - verify_Z[0]
-            );
-            substage_started = Clock::now();
-            assign_axis_topology(
-                candidates[0],
-                verify_R[1], verify_R[2], verify_Z[3], verify_Z[4],
-                end_R[1], end_R[2], end_Z[1], end_Z[2],
-                end_R[3], end_R[4], end_Z[3], end_Z[4]
-            );
-            timings[SGPU_SCORE_TIME_AXIS_TOPOLOGY] += seconds_since(substage_started);
             axis.hint_distance = std::hypot(
                 candidates[0].R - config.axis_hint_R,
                 candidates[0].Z - config.axis_hint_Z
@@ -1031,11 +1060,18 @@ void evaluate_psi_host(
     const double X = (R - axis_R) / config.psi_a;
     const double Y = (Z - axis_Z) / config.psi_a;
     std::array<double, 25> xpow{}, ypow{};
+    std::array<double, 33> cosv{}, sinv{};
     xpow[0] = 1.0;
     ypow[0] = 1.0;
     for (int power = 1; power <= config.psi_poly_degree; ++power) {
         xpow[power] = xpow[power - 1] * X;
         ypow[power] = ypow[power - 1] * Y;
+    }
+    cosv[0] = 1.0;
+    for (int mode = 1; mode <= config.psi_m_tor; ++mode) {
+        const double argument = static_cast<double>(mode * nfp) * phi;
+        cosv[mode] = std::cos(argument);
+        sinv[mode] = std::sin(argument);
     }
     value = X * X;
     grad_R = 2.0 * X / config.psi_a;
@@ -1045,10 +1081,9 @@ void evaluate_psi_host(
         const int a = psi.modes.a[k];
         const int b = psi.modes.b[k];
         const int m = psi.modes.m[k];
-        const double argument = static_cast<double>(m * nfp) * phi;
-        const double trig = m == 0 ? 1.0 : (psi.modes.kind[k] == 0 ? std::cos(argument) : std::sin(argument));
+        const double trig = psi.modes.kind[k] == 0 ? cosv[m] : sinv[m];
         const double trig_phi = m == 0 ? 0.0 : static_cast<double>(m * nfp) *
-            (psi.modes.kind[k] == 0 ? -std::sin(argument) : std::cos(argument));
+            (psi.modes.kind[k] == 0 ? -sinv[m] : cosv[m]);
         const double mono = xpow[a] * ypow[b];
         const double derivative_x = a > 0 ? a * xpow[a - 1] * ypow[b] / config.psi_a : 0.0;
         const double derivative_y = b > 0 ? b * xpow[a] * ypow[b - 1] / config.psi_a : 0.0;
@@ -1075,6 +1110,19 @@ bool fit_psi_native(
     R.reserve(reserve);
     Z.reserve(reserve);
     phi.reserve(reserve);
+    std::vector<double> phi_grid(config.psi_n_phi);
+    std::vector<double> axis_R_grid(config.psi_n_phi), axis_Z_grid(config.psi_n_phi);
+    for (int iphi = 0; iphi < config.psi_n_phi; ++iphi) {
+        const double angle = TWOPI * iphi / static_cast<double>(nfp * config.psi_n_phi);
+        double axis_R_phi, axis_Z_phi;
+        phi_grid[iphi] = angle;
+        periodic_hermite_host(
+            angle, axis.R, axis.R_phi, nfp, axis_R_grid[iphi], axis_R_phi
+        );
+        periodic_hermite_host(
+            angle, axis.Z, axis.Z_phi, nfp, axis_Z_grid[iphi], axis_Z_phi
+        );
+    }
     for (int ir = 0; ir < config.psi_n_r; ++ir) {
         const double dR = -config.psi_a + 2.0 * config.psi_a * ir / std::max(config.psi_n_r - 1, 1);
         for (int iz = 0; iz < config.psi_n_z; ++iz) {
@@ -1082,13 +1130,9 @@ bool fit_psi_native(
             const double radius = std::hypot(dR, dZ);
             if (radius < config.psi_rho_min || radius > config.psi_a) continue;
             for (int iphi = 0; iphi < config.psi_n_phi; ++iphi) {
-                const double angle = TWOPI * iphi / static_cast<double>(nfp * config.psi_n_phi);
-                double axis_R, axis_R_phi, axis_Z, axis_Z_phi;
-                periodic_hermite_host(angle, axis.R, axis.R_phi, nfp, axis_R, axis_R_phi);
-                periodic_hermite_host(angle, axis.Z, axis.Z_phi, nfp, axis_Z, axis_Z_phi);
-                R.push_back(axis_R + dR);
-                Z.push_back(axis_Z + dZ);
-                phi.push_back(angle);
+                R.push_back(axis_R_grid[iphi] + dR);
+                Z.push_back(axis_Z_grid[iphi] + dZ);
+                phi.push_back(phi_grid[iphi]);
             }
         }
     }
@@ -1677,7 +1721,8 @@ bool validate_config(const SgpuScoreConfig& config, std::string& reason) {
         !(config.surface_confidence_smoothmax_temperature > 0.0) ||
         config.surface_confidence_minimum < 0.0 || config.surface_confidence_minimum > 1.0 ||
         config.axis_hint_enabled < 0 || config.axis_hint_enabled > 1 ||
-        config.axis_hint_require_continuation < 0 || config.axis_hint_require_continuation > 1 ||
+        config.axis_hint_require_continuation < 0 || config.axis_hint_require_continuation > 2 ||
+        (config.axis_hint_require_continuation == 2 && !config.axis_hint_enabled) ||
         !(config.axis_hint_max_distance > 0.0)) {
         reason = "invalid score configuration dimensions";
         return false;
@@ -5648,9 +5693,9 @@ int sgpu_default_score_config(SgpuScoreConfig* config) {
     config->axis_topology_margin = 2.0e-2;
     config->psi_poly_degree = 10;
     config->psi_m_tor = 12;
-    config->psi_n_r = 80;
-    config->psi_n_z = 80;
-    config->psi_n_phi = 80;
+    config->psi_n_r = 48;
+    config->psi_n_z = 48;
+    config->psi_n_phi = 48;
     config->psi_validation_points = 4000;
     config->psi_solver_mode = 2;
     config->psi_precision_mode = 2;
@@ -5686,7 +5731,8 @@ int sgpu_default_score_config(SgpuScoreConfig* config) {
     config->alpha_radial_order = 12;
     config->alpha_poloidal_order = 12;
     config->alpha_toroidal_order = 12;
-    config->iota_degree = 0;
+    // iota is a flux function; rho^2 is the normalized radial surface label.
+    config->iota_degree = 3;
     config->radial_bin_count = 10;
     config->alpha_solver_mode = 2;
     config->volume_rho_min = 0.08;
