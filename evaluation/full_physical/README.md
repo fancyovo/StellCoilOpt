@@ -35,7 +35,7 @@ python scripts/fit_alpha.py \
   --gpu-lib gpu_backend/build_native_score/libstellarator_gpu.so
 ```
 
-检查固定训练/验证点预算、磁通单调性、 $\alpha$ 独立验证残差、法向场和 $1+\lambda_\theta$。
+检查固定训练/验证点预算、磁通单调性、 $\alpha$ 独立验证残差、法向场和 $1+\lambda_\theta$ 。
 
 ## 3. 构造 $\alpha+\nu$ 候选面
 

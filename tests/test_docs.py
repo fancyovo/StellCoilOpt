@@ -47,6 +47,45 @@ def test_markdown_avoids_unsupported_github_math_macros() -> None:
             assert macro not in text, f"{path}: GitHub rejects math macro {macro}"
 
 
+def test_inline_math_is_separated_from_surrounding_text() -> None:
+    errors: list[str] = []
+    for path in markdown_files():
+        in_fence = False
+        in_display_math = False
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            if stripped == "$$":
+                in_display_math = not in_display_math
+                continue
+            if in_display_math:
+                continue
+
+            prose = re.sub(r"`[^`]*`", lambda match: " " * len(match.group()), line)
+            delimiters = [
+                index
+                for index, char in enumerate(prose)
+                if char == "$" and (index == 0 or prose[index - 1] != "\\")
+            ]
+            if len(delimiters) % 2:
+                errors.append(f"{path}:{line_number}: unpaired inline-math delimiter")
+                continue
+
+            for opening, closing in zip(delimiters[::2], delimiters[1::2]):
+                if opening and not prose[opening - 1].isspace():
+                    errors.append(f"{path}:{line_number}: add a space before inline math")
+                if closing + 1 < len(prose) and not prose[closing + 1].isspace():
+                    errors.append(f"{path}:{line_number}: add a space after inline math")
+
+    assert not errors, "\n".join(errors)
+
+
 def test_local_markdown_links_exist() -> None:
     for path in markdown_files():
         for target in MARKDOWN_LINK.findall(path.read_text(encoding="utf-8")):

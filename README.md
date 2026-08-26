@@ -49,9 +49,9 @@ python scripts/smoke_native_score.py examples/01.json \
 正式体评分按以下顺序执行：
 
 1. 对一个场周期的 Poincare 映射批量求固定点，并保留满足椭圆拓扑条件的磁轴。
-2. 在磁轴附近线性拟合满足 $\boldsymbol B\cdot\nabla s\approx0$ 的多项式-Fourier 几何标签 $s$。
-3. 连续选择可用边界，并由截面环量标定物理磁通 $\psi(s)$。
-4. 在体采样点上联合线性拟合 $\alpha$ 与三次 $\iota(\psi/\psi_{\mathrm{edge}})$。快速评分使用切向标量方程；完整验收支线使用向量 Clebsch 关系拟合 $\alpha+\nu$ 初值。
+2. 在磁轴附近线性拟合满足 $\boldsymbol B\cdot\nabla s\approx0$ 的多项式-Fourier 几何标签 $s$ 。
+3. 连续选择可用边界，并由截面环量标定物理磁通 $\psi(s)$ 。
+4. 在体采样点上联合线性拟合 $\alpha$ 与三次 $\iota(\psi/\psi_{\mathrm{edge}})$ 。快速评分使用切向标量方程；完整验收支线使用向量 Clebsch 关系拟合 $\alpha+\nu$ 初值。
 5. 计算体 QA/QH/QP、有效体积、旋转变换和线圈工程量，并返回结构化元数据与默认 0--100 分数。
 
 快速分数是筛选与优化目标，不是标准磁面或 MHD 平衡存在性的证明。少量候选仍需运行 Simsopt LS/Newton、独立稠密检验、Poincare 追踪和 DESC。
@@ -98,7 +98,7 @@ continued = evaluator.evaluate(
 - `independent` 从线圈全局搜索磁轴，适合独立样本、随机起点和最终复评。
 - `strict_continuation` 只接受给定初值附近的同一磁轴分支，但完整重算其余物理量；分支不满足条件时返回 `branch_lost`，不会切换到另一根磁轴。
 
-`NeighborhoodEvaluator` 以一个正式中心为锚，批量评价附近有限差分端点。它会重算候选磁轴、$s$、边界、$\psi$、$\alpha/\iota$ 和体 QS 的局部近似，但继承坐标分量并线性化线圈工程分量。其输出用于端点排序和方向导数；每个接受的新中心必须再经过 `strict_continuation` 正式评分。
+`NeighborhoodEvaluator` 以一个正式中心为锚，批量评价附近有限差分端点。它会重算候选磁轴、 $s$ 、边界、 $\psi$ 、 $\alpha/\iota$ 和体 QS 的局部近似，但继承坐标分量并线性化线圈工程分量。其输出用于端点排序和方向导数；每个接受的新中心必须再经过 `strict_continuation` 正式评分。
 
 `EvaluationResult` 同时保存 `native_score`、七个分数组成、原始诊断量、逐阶段耗时、状态和调用配置。可用 `WeightedComponentPolicy` 或任意可调用对象从同一元数据构造用户分数，而不修改物理计算。
 
@@ -110,7 +110,7 @@ continued = evaluator.evaluate(
 - 运行 200 个 Adam 更新；
 - 每步生成 64 个新正交方向，以 $h=0.005$ 计算 128 个中心差分端点；
 - 端点使用单卡近邻批量评分，接受中心使用严格续接正式评分；
-- Adam 使用 $\eta=0.02$、$\beta_1=0.7$、$\beta_2=0.999$；
+- Adam 使用 $\eta=0.02$ 、 $\beta_1=0.7$ 、 $\beta_2=0.999$ ；
 - Flow 使用 FP32 RK4-128。
 
 先筛选起点：
@@ -152,7 +152,7 @@ torchrun --standalone --nproc-per-node=4 scripts/train_qh_flow.py \
   --output-dir runs/flow
 ```
 
-训练目标采用直线概率路径。Transformer 对线圈 token 使用非因果注意力且不加位置编码，$N_{\mathrm{FP}}$ 通过条件嵌入输入。训练数据的使用与再分发必须遵守其原始许可。
+训练目标采用直线概率路径。Transformer 对线圈 token 使用非因果注意力且不加位置编码， $N_{\mathrm{FP}}$ 通过条件嵌入输入。训练数据的使用与再分发必须遵守其原始许可。
 
 ## 完整物理验收
 
@@ -163,7 +163,7 @@ fit_alpha.py -> fit_nu.py -> solve_boozer_surface.py
              -> select_largest_standard_surface.py -> evaluate_surface.py
 ```
 
-每个新样本必须独立选择源拟合半径和候选磁面阶梯，不得复用另一样本的固定半径或标签值。完整验收应保存分数组成、面 QA/QH/QP、$|B|$ 等高线、Poincare、三维线圈与磁面，以及可用的全部 DESC 诊断图。
+每个新样本必须独立选择源拟合半径和候选磁面阶梯，不得复用另一样本的固定半径或标签值。完整验收应保存分数组成、面 QA/QH/QP、 $|B|$ 等高线、Poincare、三维线圈与磁面，以及可用的全部 DESC 诊断图。
 
 ## 验证
 
