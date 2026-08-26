@@ -447,6 +447,46 @@ int sgpu_score_coils_g4_fixed_branch_batch(
     SgpuScoreResult* query_score_results
 );
 
+// Experimental local-oracle path: every query recomputes the complete score,
+// but initializes its full-density psi solve from the center QR coefficients.
+int sgpu_score_coils_psi_warm_batch(
+    const double* center_coeffs_x,
+    const double* center_coeffs_y,
+    const double* center_coeffs_z,
+    const double* center_currents_a,
+    const double* query_coeffs_x,
+    const double* query_coeffs_y,
+    const double* query_coeffs_z,
+    const double* query_currents_a,
+    int query_count,
+    int n_base_coils,
+    int n_coeff,
+    int nfp,
+    int warm_iterations,
+    int use_center_qr_preconditioner,
+    const SgpuScoreConfig* config,
+    SgpuScoreResult* center_score_result,
+    SgpuScoreResult* query_score_results
+);
+
+// Captures the center psi QR factor for the query-major local oracle and
+// returns the fitted center coefficients. The capture remains valid until
+// sgpu_clear_psi_warm_preconditioner is called on the same host thread.
+int sgpu_score_coils_capture_psi_center(
+    const double* coeffs_x,
+    const double* coeffs_y,
+    const double* coeffs_z,
+    const double* currents_a,
+    int n_base_coils,
+    int n_coeff,
+    int nfp,
+    const SgpuScoreConfig* config,
+    SgpuScoreResult* result,
+    double* psi_coefficients,
+    int psi_coefficient_capacity,
+    int* psi_coefficient_count
+);
+
 // Internal-oracle entrypoint: returns the reported 0--100 coil component and
 // its piecewise analytical gradient with active percentile/minimum indices
 // frozen at the supplied coil.
@@ -476,6 +516,83 @@ int sgpu_create_field(
     int segments_per_coil,
     int device_id,
     void** out_handle
+);
+
+// Experimental query-major FP32 field used by the local full-gradient oracle.
+// Coefficients are flattened as [query][coil][coefficient]. All point and line
+// arrays passed to the batch operations are flattened as [query][item][...].
+int sgpu_create_field_batch_f32(
+    const double* coeffs_x,
+    const double* coeffs_y,
+    const double* coeffs_z,
+    const double* currents_a,
+    int query_count,
+    int n_base_coils,
+    int n_coeff,
+    int nfp,
+    int segments_per_coil,
+    int device_id,
+    void** out_handle
+);
+
+void sgpu_destroy_field_batch(void* handle);
+
+int sgpu_batch_eval_B_f32(
+    void* handle,
+    const float* xyz_host,
+    float* B_host,
+    int points_per_query
+);
+
+int sgpu_batch_eval_B_grad_f32(
+    void* handle,
+    const float* xyz_host,
+    float* B_host,
+    float* grad_B_host,
+    int points_per_query
+);
+
+int sgpu_batch_trace_period_mixed(
+    void* handle,
+    const double* R0_host,
+    const double* Z0_host,
+    double* R1_host,
+    double* Z1_host,
+    int lines_per_query,
+    int nfp,
+    int steps
+);
+
+int sgpu_batch_trace_axis_samples(
+    void* handle,
+    const double* R0_host,
+    const double* Z0_host,
+    int nfp,
+    int integration_steps,
+    int sample_count,
+    double* R_host,
+    double* Z_host,
+    double* R_phi_host,
+    double* Z_phi_host
+);
+
+int sgpu_batch_refine_axis_hint(
+    void* handle,
+    const double* hint_R_host,
+    const double* hint_Z_host,
+    int nfp,
+    int trace_steps,
+    int newton_iterations,
+    double finite_difference_step,
+    double maximum_newton_step,
+    double residual_tolerance,
+    double hint_max_distance,
+    double* axis_R_host,
+    double* axis_Z_host,
+    double* residual_host,
+    double* topology_trace_host,
+    double* topology_det_host,
+    unsigned char* valid_host
 );
 
 void sgpu_destroy_field(void* handle);
@@ -541,6 +658,66 @@ int sgpu_normal_eq_f32(
     float* atb_host,
     int n_rows,
     int n_cols
+);
+
+int sgpu_set_psi_warm_preconditioner_capture(int enabled);
+int sgpu_has_psi_warm_preconditioner(int coefficient_count);
+void sgpu_clear_psi_warm_preconditioner();
+
+int sgpu_fit_psi_batch_pcgls_f32(
+    void* batch_field_handle,
+    const double* axis_R_host,
+    const double* axis_Z_host,
+    const double* axis_R_phi_host,
+    const double* axis_Z_phi_host,
+    int axis_count,
+    const int* mode_a_host,
+    const int* mode_b_host,
+    const int* mode_m_host,
+    const int* mode_kind_host,
+    int coefficient_count,
+    int nfp,
+    double radius_scale,
+    int radial_grid,
+    int vertical_grid,
+    int phi_grid,
+    double rho_min,
+    double ridge,
+    int iterations,
+    const double* center_coefficients_host,
+    double* coefficients_host,
+    double* train_rms_host,
+    double* stats_out,
+    int stats_len
+);
+
+// Experimental local full-gradient oracle. The selected center surface level
+// and coordinate component are fixed, while each query retains its own axis,
+// psi, flux calibration, volume geometry, iota and differential-QS response.
+int sgpu_score_coils_local_batch(
+    void* batch_field_handle,
+    const double* currents_a,
+    int n_base_coils,
+    int nfp,
+    const double* axis_R,
+    const double* axis_Z,
+    const double* axis_R_phi,
+    const double* axis_Z_phi,
+    int axis_count,
+    const double* axis_residual,
+    const double* axis_topology_trace,
+    const double* axis_topology_det,
+    const double* psi_coefficients,
+    int psi_coefficient_count,
+    const double* psi_train_rms,
+    const double* coil_components,
+    const SgpuScoreResult* center_result,
+    const SgpuScoreConfig* config,
+    int surface_theta_count,
+    int alpha_iterations,
+    SgpuScoreResult* query_results,
+    double* stats_out,
+    int stats_len
 );
 
 int sgpu_fit_psi_fullgpu(

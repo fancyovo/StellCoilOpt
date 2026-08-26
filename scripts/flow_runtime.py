@@ -80,7 +80,12 @@ def load_flow_checkpoint(
 
 def load_initial_noise(path: Path) -> tuple[np.ndarray, dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    for section in ("flow_prior_start", "flow_prior_standard_adam"):
+    for section in (
+        "flow_prior_start",
+        "flow_prior_screening",
+        "flow_prior_local_full_gradient_adam",
+        "flow_prior_standard_adam",
+    ):
         if section in payload:
             noise = payload[section]["noise"]
             break

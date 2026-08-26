@@ -1,49 +1,46 @@
 # StellCoilOpt
 
-从 Fourier 线圈参数出发，以原生 C++/CUDA 完成磁轴、近似磁通坐标、候选磁面、体拟对称性和工程约束评估；同一套评分器可作为 Flow Matching 潜空间中的黑箱优化目标。
+StellCoilOpt 从 Fourier 线圈参数出发，在 C++/CUDA 中完成磁轴、三维体坐标、微分准对称性和线圈工程量评估，并用固定预算的 Flow 潜空间优化搜索准螺旋对称线圈。
 
-项目主页：<https://github.com/fancyovo/StellCoilOpt>
+完整的方法定义、实验协议和定量结果见唯一的公开研究文档：[技术报告](docs/technical-report.md)。
 
-![从潜变量到线圈评分的主流程](docs/assets/overview.png)
+![从 Fourier 线圈到体诊断、优化目标和独立物理验收的总体流程](docs/assets/technical-report/01-pipeline.svg)
 
 ## 仓库内容
 
-- `gpu_backend/`：ABI 10 原生 CUDA 评分器及 Python `ctypes` 接口。
-- `stellarator_eval/`：磁轴、拟合不变量、磁通标定、Clebsch 坐标、体 QS、表面求解与可视化模块。
-- `flow_matching/`：条件 Flow Matching 数据、Transformer、ODE 积分与几何损失。
-- `scripts/`：单例/批量评分、数据导出、训练、反演、潜空间 Adam、`alpha+nu` 初始化、标准磁面和 DESC 验证入口。
-- `evaluation/full_physical/`：从候选面中选择最大连续可接受磁面的规则与完整评估顺序。
-- `tests/`：不依赖项目数据或模型权重的单元测试。
+- `gpu_backend/`：原生 CUDA 评分器、批量近邻评分内核和 Python `ctypes` 绑定。
+- `stellarator_eval/`：正式评分接口、近邻批量接口、体坐标、标准磁面和可视化模块。
+- `flow_matching/`：条件 Flow Matching 模型、数据归一化、ODE 积分和已验证优化协议。
+- `scripts/`：评分、Flow 数据准备与训练、32 候选筛选、64 方向 Adam、标准磁面和 DESC 入口。
+- `evaluation/full_physical/`：候选的完整物理验收流程。
+- `tests/`：不依赖私有数据或训练权重的接口与数值单元测试。
 
-仓库不包含数据集、训练权重、原始 benchmark 结果、运行日志、集群提交脚本、历史探索记录或私有基础设施配置。下文仅保留一张汇总后的性能图，用于说明当前实现的耗时结构。
+仓库不包含 QUASR 数据、训练权重、逐次实验数组、运行日志、集群提交脚本或私有基础设施配置。
 
-## 方法主线
+## 数值主线
 
-![评分器与完整物理验证](docs/assets/evaluator-pipeline.png)
-
-快速评分路径按固定预算执行：
+正式体评分按以下顺序执行：
 
 1. 对一个场周期的 Poincare 映射批量求固定点，并保留满足椭圆拓扑条件的磁轴。
-2. 在磁轴附近拟合满足 $\mathbf B\cdot\nabla s\approx0$ 的多项式-Fourier 不变量；固定 $X^2$ 的常数 Fourier 系数为 1，消除齐次方程的零解与尺度规范。
-3. 沿极射线求 $s$ 等值面，追踪磁力线筛选可用外层面，并用环向磁通 $\Phi_t/(2\pi)$ 把 $s$ 标定为 $\psi$。
-4. 在体采样点上以向量最小二乘拟合 $\mathbf B\approx\nabla\psi\times\nabla\alpha$，其中 $\alpha=\theta+\lambda-\iota\phi$，随后计算体 QS 残差与工程量。
-5. 将磁轴、 $\psi$、磁面、坐标、体 QS、 $\iota$ 和线圈工程七部分合成为 $[0,100]$ 分数，并显式返回失败状态。
+2. 在磁轴附近线性拟合满足 $\boldsymbol B\cdot\nabla s\approx0$ 的多项式-Fourier 几何标签 $s$。
+3. 连续选择可用边界，并由截面环量标定物理磁通 $\psi(s)$。
+4. 在体采样点上联合线性拟合 $\alpha$ 与三次 $\iota(\psi/\psi_{\mathrm{edge}})$。快速评分使用切向标量方程；完整验收支线使用向量 Clebsch 关系拟合 $\alpha+\nu$ 初值。
+5. 计算体 QA/QH/QP、有效体积、旋转变换和线圈工程量，并返回结构化元数据与默认 0--100 分数。
 
-完整物理接受是独立路径：从候选面构造 $\alpha+\nu$ 初值，运行 Simsopt 标准最小二乘与 Newton，随后检查独立稠密网格、Poincare、坐标正则性、体积单调性和 DESC。快速分数不能替代这一步。
-
-公式、规范自由度、采样权重、精确评分构成和数值边界见 [技术方法](docs/method.md)。
+快速分数是筛选与优化目标，不是标准磁面或 MHD 平衡存在性的证明。少量候选仍需运行 Simsopt LS/Newton、独立稠密检验、Poincare 追踪和 DESC。
 
 ## 环境
 
-基础 Python 包需要 Python 3.10+、NumPy 和 SciPy：
+基础 Python 环境：
 
 ```bash
 python -m venv .venv
-python -m pip install -U pip
-python -m pip install -e ".[plot,dev]"
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[plot,train,dev]"
 ```
 
-训练 Flow 需要 `.[train]`；标准 Boozer 面和完整验证需要 `.[simsopt]`，DESC 需按其官方安装方式另行安装。原生评分器需要支持 C++17 的主机编译器、CMake 3.22+、CUDA Toolkit、cuBLAS 和 cuSOLVER。
+原生评分器需要 Linux、CMake 3.22 以上、C++17、CUDA Toolkit、cuBLAS 和 cuSOLVER。Simsopt 与 DESC 仅用于完整验收，不是快速评分和 Flow 训练的必需依赖。
 
 ## 构建 CUDA 后端
 
@@ -53,17 +50,11 @@ cmake -S gpu_backend -B gpu_backend/build_native_score \
 cmake --build gpu_backend/build_native_score --parallel
 ```
 
-多架构环境可额外设置 `-DCMAKE_CUDA_ARCHITECTURES=<compute capability>`。Linux 默认库路径为 `gpu_backend/build_native_score/libstellarator_gpu.so`；其他平台通过下述命令的 `--lib` 参数传入实际产物路径。
+Linux 默认产物为 `gpu_backend/build_native_score/libstellarator_gpu.so`。性能剖析可在配置时增加 `-DSGPU_ENABLE_NVTX=ON`；普通构建默认不引入 NVTX 开销。
 
 ## 输入格式
 
-一个基础线圈由三个 33 项 Fourier 数组和一个电流表示。每个坐标数组的顺序为
-
-```text
-[c0, s1, c1, s2, c2, ..., s16, c16]
-```
-
-最小 JSON 结构为：
+每根基本线圈的 `x/y/z` 均使用奇数长度的实 Fourier 系数数组，电流单位必须显式给出。Flow 模型使用每个坐标 33 项，加一个电流，因此一根线圈对应 100 维 token。
 
 ```json
 {
@@ -71,18 +62,18 @@ cmake --build gpu_backend/build_native_score --parallel
     "x": [[1.0, 0.0, 0.2]],
     "y": [[0.0, 0.2, 0.0]],
     "z": [[0.0, 0.0, 0.1]],
-    "current": [1.0],
+    "current": [1000000.0],
     "current_unit": "A"
   },
   "nfp": 4
 }
 ```
 
-实际 `x/y/z` 每行必须同为奇数长度；原生训练/Flow 路径使用 33 项。`nfp` 个场周期和 stellarator symmetry 由评估器展开，不应在输入中重复所有对称线圈。`examples/01.json` 是完整的格式示例，不代表基准结果。
+`nfp` 个场周期和 stellarator symmetry 由评估器展开，输入中不应重复所有对称线圈。`examples/01.json` 是完整格式示例，不代表性能基准。
 
-## 原生评分
+## 正式评分接口
 
-单例 QH 评分：
+命令行单例 QH 评分：
 
 ```bash
 python scripts/smoke_native_score.py examples/01.json \
@@ -90,27 +81,67 @@ python scripts/smoke_native_score.py examples/01.json \
   --lib gpu_backend/build_native_score/libstellarator_gpu.so
 ```
 
-批量评分入口为 `scripts/batch_native_score.py`。它支持按 worker 索引分片，适合由外部任务系统启动一个持久进程对应一块 GPU；仓库不绑定任何特定调度器。
+Python 接口将数值模式和分数策略分开：
 
-ABI 10 当前生产默认使用 $48\times48\times48$ 的 $\psi$ 拟合网格，并联合拟合
+```python
+from stellarator_eval import CoilSet, EvaluationMode, Evaluator
 
-$$
-\iota(\rho)=\iota_0+\iota_1\rho^2+\iota_2\rho^4+\iota_3\rho^6.
-$$
+coils = CoilSet(coeffs_x, coeffs_y, coeffs_z, currents_a, nfp=4)
+evaluator = Evaluator("gpu_backend/build_native_score/libstellarator_gpu.so")
 
-独立样本仍执行全局磁轴搜索。局部优化端点默认使用严格 mixed 磁轴续接：保留 Newton 闭合残差、四条扰动线的椭圆拓扑检查和分支距离门，但不再重复五条低并行度 FP64 轨迹。调用方可通过 `SgpuScoreConfig` 覆盖这些默认值；结果记录应同时保存完整配置，不能只记录总分。
+initial = evaluator.evaluate(coils, mode=EvaluationMode.INDEPENDENT)
+continued = evaluator.evaluate(
+    nearby_coils,
+    mode=EvaluationMode.STRICT_CONTINUATION,
+    continuation=initial.continuation_state(),
+)
+```
 
-## 性能 benchmark
+`Evaluator` 的两种模式都是正式评分：
 
-![原生评分器端到端耗时、阶段构成与长尾分布](docs/assets/benchmark-runtime.png)
+- `independent` 从线圈全局搜索磁轴，适合独立样本、随机起点和最终复评。
+- `strict_continuation` 只接受给定初值附近的同一磁轴分支，但完整重算其余物理量；分支不满足条件时返回 `branch_lost`，不会切换到另一根磁轴。
 
-图中汇总的是 ABI 10 早期默认值下，1024 个 QUASR QH 样本在两张 RTX 5090 上的性能基线。`global axis` 对每个独立样本执行全局磁轴搜索；`strict hint` 用于局部优化端点，只允许沿用中心样本已验证的磁轴分支，分支丢失即失败，不切换到另一根磁轴。1013 个可配对样本的单次调用耗时中位数分别为 2.85 s 和 0.97 s，配对中位加速为 2.99 倍。
+`NeighborhoodEvaluator` 以一个正式中心为锚，批量评价附近有限差分端点。它会重算候选磁轴、$s$、边界、$\psi$、$\alpha/\iota$ 和体 QS 的局部近似，但继承坐标分量并线性化线圈工程分量。其输出用于端点排序和方向导数；每个接受的新中心必须再经过 `strict_continuation` 正式评分。
 
-当前默认值另在 69 个严格续接样本上完成配对验收。把 $\psi$ 网格由 $80^3$ 降为 $48^3$ 后，score 调用 P50/P95 从 $1.013/1.266\ \mathrm{s}$ 降为 $0.665/0.913\ \mathrm{s}$，score Spearman 相关系数为 $0.999927$，最高一成样本完全重合。精确磁轴提示下，mixed 严格续接进一步得到 $0.551/0.730\ \mathrm{s}$ 的 P50/P95；施加 $10^{-3}$ 初值偏移时为 $1.010/1.392\ \mathrm{s}$。这些数字对应不同提示误差条件，不应被当作所有独立样本的统一耗时。
+`EvaluationResult` 同时保存 `native_score`、七个分数组成、原始诊断量、逐阶段耗时、状态和调用配置。可用 `WeightedComponentPolicy` 或任意可调用对象从同一元数据构造用户分数，而不修改物理计算。
 
-## Flow Matching
+## 已验证 QH 优化
 
-数据导出、校验、训练和反演是分离步骤：
+公开默认配置与技术报告中的 309 条优化轨迹一致，不使用历史两方向 SPSA：
+
+- 先独立评价 32 个 Flow 候选并选择最高有效分起点；
+- 运行 200 个 Adam 更新；
+- 每步生成 64 个新正交方向，以 $h=0.005$ 计算 128 个中心差分端点；
+- 端点使用单卡近邻批量评分，接受中心使用严格续接正式评分；
+- Adam 使用 $\eta=0.02$、$\beta_1=0.7$、$\beta_2=0.999$；
+- Flow 使用 FP32 RK4-128。
+
+先筛选起点：
+
+```bash
+python scripts/screen_flow_starts.py \
+  --checkpoint runs/flow/checkpoint_latest.pt \
+  --lib gpu_backend/build_native_score/libstellarator_gpu.so \
+  --out-dir runs/qh_nfp4_nc3/screen \
+  --nfp 4 --n-base-coils 3 --seed 1
+```
+
+再从选中起点优化；下列命令不覆盖任何协议参数，因为 CLI 默认值已经锁定为上述配置：
+
+```bash
+python scripts/optimize_flow_latent.py \
+  --checkpoint runs/flow/checkpoint_latest.pt \
+  --initial-case runs/qh_nfp4_nc3/screen/selected_start.json \
+  --lib gpu_backend/build_native_score/libstellarator_gpu.so \
+  --out-dir runs/qh_nfp4_nc3/optimization \
+  --nfp 4 --n-base-coils 3 \
+  --flow-device 0 --score-device 0
+```
+
+一条轨迹使用一张 GPU。扩展到多卡时，应由外部调度器让不同轨迹各占一张卡，而不是让单条轨迹隐式改变协议。
+
+## Flow 训练
 
 ```bash
 python scripts/export_quasr_qh_flow.py \
@@ -123,52 +154,29 @@ python scripts/verify_qh_flow_dataset.py --data-dir data/qh_flow
 torchrun --standalone --nproc-per-node=4 scripts/train_qh_flow.py \
   --data-dir data/qh_flow \
   --output-dir runs/flow
-
-python scripts/invert_qh_flow_latents.py \
-  --data-dir data/qh_flow \
-  --checkpoint runs/flow/checkpoint_latest.pt \
-  --output-dir runs/inverted
 ```
 
-训练目标使用直线概率路径 $x_t=(1-t)z+t x$ 和速度目标 $x-z$。默认 Transformer 对线圈 token 不加位置编码，因此线圈排列不改变模型含义； $N_{\rm FP}$ 通过条件嵌入输入。ODE 使用同一速度场正向生成、反向求潜变量。
+训练目标采用直线概率路径。Transformer 对线圈 token 使用非因果注意力且不加位置编码，$N_{\mathrm{FP}}$ 通过条件嵌入输入。训练数据的使用与再分发必须遵守其原始许可。
 
-## 潜空间黑箱优化
+## 完整物理验收
 
-![Flow 潜空间中的有限差分 Adam](docs/assets/flow-optimization.png)
-
-```bash
-python scripts/optimize_flow_latent.py \
-  --checkpoint runs/flow/checkpoint_latest.pt \
-  --out-dir runs/optimized \
-  --lib gpu_backend/build_native_score/libstellarator_gpu.so \
-  --target QH --nfp 4 --n-base-coils 3 \
-  --gpus 0,1,2,3
-```
-
-默认每步使用两个新采样的正交方向做中心差分，以标准 Adam 做分数上升；Flow 使用 FP32 RK4-128，扰动为 `0.005`，学习率为 `0.01`，一阶动量为 `0.7`。端点评分使用当前中心的 mixed 严格磁轴续接提示；分支丢失返回 `branch_lost`，不会静默切换磁轴。无效端点、异常梯度尺度和无效更新中心都有有界处理，运行可由 `--resume` 从完整 Adam 状态继续。
-
-## 完整物理验证
-
-完整路径依赖 Simsopt，DESC 为最终可选阶段。入口和文件传递关系见 [完整评估说明](evaluation/full_physical/README.md)。核心顺序是：
+完整路径依赖 Simsopt，DESC 为最终可选阶段。入口和文件传递规则见 `evaluation/full_physical/README.md`，核心顺序为：
 
 ```text
-stellcoilopt-eval -> fit_alpha.py -> fit_nu.py
-                 -> solve_boozer_surface.py
-                 -> select_largest_standard_surface.py
-                 -> evaluate_surface.py
+fit_alpha.py -> fit_nu.py -> solve_boozer_surface.py
+             -> select_largest_standard_surface.py -> evaluate_surface.py
 ```
 
-每个新样本都必须独立选择拟合半径 `a` 和候选 `s` 阶梯。不得把其他样本的外层面参数当作固定默认值。
+每个新样本必须独立选择源拟合半径和候选磁面阶梯，不得复用另一样本的固定半径或标签值。完整验收应保存分数组成、面 QA/QH/QP、$|B|$ 等高线、Poincare、三维线圈与磁面，以及可用的全部 DESC 诊断图。
 
 ## 验证
 
 ```bash
-python -m compileall -q .
+python -m compileall -q flow_matching stellarator_eval scripts gpu_backend/python
 python -m pytest -q
-python tools/render_docs.py
 ```
 
-CUDA 数值测试需要已构建的动态库和可用 GPU；Simsopt/DESC 测试只在安装对应可选依赖后运行。
+Python 单元测试不需要模型权重。CUDA 数值测试需要已构建的动态库和可用 GPU；Simsopt/DESC 测试只在安装对应可选依赖后运行。
 
 ## 许可证
 

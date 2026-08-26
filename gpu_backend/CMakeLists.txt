@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 project(stellarator_gpu_backend LANGUAGES CXX CUDA)
 find_package(CUDAToolkit REQUIRED)
 
+option(SGPU_ENABLE_NVTX "Enable profiling-only NVTX ranges" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -25,6 +27,11 @@ target_compile_definitions(stellarator_gpu PRIVATE
     SGPU_WARPS_PER_BLOCK=${SGPU_WARPS_PER_BLOCK}
     SGPU_SEG_TILE=${SGPU_SEG_TILE}
 )
+
+if(SGPU_ENABLE_NVTX)
+    target_compile_definitions(stellarator_gpu PRIVATE SGPU_ENABLE_NVTX=1)
+    target_link_libraries(stellarator_gpu PRIVATE CUDA::nvtx3)
+endif()
 
 set_target_properties(stellarator_gpu PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="560" viewBox="0 0 1320 560">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#405463"/></marker>
+    <style>
+      .title{font:700 24px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#172832}
+      .head{font:700 17px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#172832}
+      .body{font:400 14px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#344954}
+      .small{font:400 12.5px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#586a74}
+      .box{fill:#fff;stroke:#82949f;stroke-width:1.4}
+      .flow{fill:#e9f2f3;stroke:#4f7f82;stroke-width:1.7}
+      .score{fill:#fff1df;stroke:#b97933;stroke-width:1.7}
+      .adam{fill:#eef1f6;stroke:#536f8c;stroke-width:1.7}
+      .path{fill:none;stroke:#405463;stroke-width:1.7;marker-end:url(#arrow)}
+      .feedback{fill:none;stroke:#6d7f8a;stroke-width:1.5;stroke-dasharray:5 4;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1320" height="560" fill="#fff"/>
+  <text x="46" y="42" class="title">Flow 潜空间中的 64 方向有限差分 Adam</text>
+  <line x1="46" y1="58" x2="1272" y2="58" stroke="#c9d1d6"/>
+
+  <text x="47" y="99" class="head">起点筛选</text>
+  <rect x="47" y="118" width="174" height="92" rx="3" class="box"/>
+  <text x="134" y="150" text-anchor="middle" class="head">条件抽样</text>
+  <text x="134" y="176" text-anchor="middle" class="body">场周期数与线圈数</text>
+  <text x="134" y="197" text-anchor="middle" class="small">按 QUASR 联合频率</text>
+  <rect x="265" y="118" width="188" height="92" rx="3" class="flow"/>
+  <text x="359" y="150" text-anchor="middle" class="head">32 个高斯潜变量</text>
+  <text x="359" y="176" text-anchor="middle" class="body">FP32 RK4-128 解码</text>
+  <text x="359" y="197" text-anchor="middle" class="small">得到 Fourier 线圈组</text>
+  <rect x="497" y="118" width="188" height="92" rx="3" class="score"/>
+  <text x="591" y="150" text-anchor="middle" class="head">独立正式评估</text>
+  <text x="591" y="176" text-anchor="middle" class="body">每个候选从零找磁轴</text>
+  <text x="591" y="197" text-anchor="middle" class="small">选择最高有效分数</text>
+  <path d="M221 164 H257" class="path"/><path d="M453 164 H489" class="path"/>
+
+  <text x="47" y="275" class="head">一次 Adam 更新</text>
+  <rect x="47" y="294" width="179" height="112" rx="3" class="box"/>
+  <text x="136" y="327" text-anchor="middle" class="head">正式中心 zₜ</text>
+  <text x="136" y="353" text-anchor="middle" class="body">保存轴分支与中心因子</text>
+  <text x="136" y="378" text-anchor="middle" class="small">中心分数来自严格续接</text>
+  <rect x="270" y="294" width="199" height="112" rx="3" class="flow"/>
+  <text x="369" y="327" text-anchor="middle" class="head">64 个正交方向</text>
+  <text x="369" y="353" text-anchor="middle" class="body">步长 h = 0.005</text>
+  <text x="369" y="378" text-anchor="middle" class="small">构造 128 个对称端点</text>
+  <rect x="513" y="294" width="199" height="112" rx="3" class="flow"/>
+  <text x="612" y="327" text-anchor="middle" class="head">端点批量解码</text>
+  <text x="612" y="353" text-anchor="middle" class="body">一个 CUDA batch</text>
+  <text x="612" y="378" text-anchor="middle" class="small">共享同一条件与网络权重</text>
+  <rect x="756" y="294" width="199" height="112" rx="3" class="score"/>
+  <text x="855" y="327" text-anchor="middle" class="head">近邻批量代理</text>
+  <text x="855" y="353" text-anchor="middle" class="body">128 个端点同步评分</text>
+  <text x="855" y="378" text-anchor="middle" class="small">估计 64 个方向导数</text>
+  <rect x="999" y="294" width="199" height="112" rx="3" class="adam"/>
+  <text x="1098" y="327" text-anchor="middle" class="head">Adam 更新</text>
+  <text x="1098" y="353" text-anchor="middle" class="body">η = 0.02，β₁ = 0.7</text>
+  <text x="1098" y="378" text-anchor="middle" class="small">β₂ = 0.999，保留历史最佳</text>
+  <path d="M226 350 H262" class="path"/><path d="M469 350 H505" class="path"/><path d="M712 350 H748" class="path"/><path d="M955 350 H991" class="path"/>
+
+  <rect x="999" y="447" width="199" height="64" rx="3" class="score"/>
+  <text x="1098" y="473" text-anchor="middle" class="head">新中心正式评估</text>
+  <text x="1098" y="496" text-anchor="middle" class="small">有效则接受；失效则回退或回滚</text>
+  <path d="M1098 406 V439" class="path"/>
+  <path d="M999 479 H135 C89 479 82 443 106 413" class="feedback"/>
+  <text x="352" y="501" class="small">重复 200 步；309 条轨迹共评估约 791 万个局部端点和 62109 个正式中心。</text>
+</svg>
