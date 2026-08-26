@@ -6,6 +6,33 @@ StellCoilOpt 从 Fourier 线圈参数出发，在 C++/CUDA 中完成磁轴、三
 
 ![从 Fourier 线圈到体诊断、优化目标和独立物理验收的总体流程](docs/assets/technical-report/01-pipeline.svg)
 
+当前公开主线与技术报告中的 309 条 QH 优化轨迹使用同一协议：32 个 Flow 候选筛选起点、64 个正交方向的中心差分、200 步 Adam，以及 FP32 RK4-128。快速评分用于高吞吐筛选和优化；Simsopt 与 DESC 用于少量候选的独立物理验收。
+
+## 快速开始
+
+当前实现面向 Linux 和 NVIDIA GPU。基础 Python 环境与 CUDA 后端可按以下方式安装和构建：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[plot,train,dev]"
+
+cmake -S gpu_backend -B gpu_backend/build_native_score \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build gpu_backend/build_native_score --parallel
+```
+
+Linux 默认产物为 `gpu_backend/build_native_score/libstellarator_gpu.so`。用仓库内示例运行一次独立 QH 评分：
+
+```bash
+python scripts/smoke_native_score.py examples/01.json \
+  --target QH \
+  --lib gpu_backend/build_native_score/libstellarator_gpu.so
+```
+
+这个命令不需要 Flow 权重。Flow 筛选与优化需要自行准备训练数据和检查点；Simsopt 与 DESC 只在完整验收阶段需要。
+
 ## 仓库内容
 
 - `gpu_backend/`：原生 CUDA 评分器、批量近邻评分内核和 Python `ctypes` 绑定。
@@ -29,29 +56,6 @@ StellCoilOpt 从 Fourier 线圈参数出发，在 C++/CUDA 中完成磁轴、三
 
 快速分数是筛选与优化目标，不是标准磁面或 MHD 平衡存在性的证明。少量候选仍需运行 Simsopt LS/Newton、独立稠密检验、Poincare 追踪和 DESC。
 
-## 环境
-
-基础 Python 环境：
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[plot,train,dev]"
-```
-
-原生评分器需要 Linux、CMake 3.22 以上、C++17、CUDA Toolkit、cuBLAS 和 cuSOLVER。Simsopt 与 DESC 仅用于完整验收，不是快速评分和 Flow 训练的必需依赖。
-
-## 构建 CUDA 后端
-
-```bash
-cmake -S gpu_backend -B gpu_backend/build_native_score \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build gpu_backend/build_native_score --parallel
-```
-
-Linux 默认产物为 `gpu_backend/build_native_score/libstellarator_gpu.so`。性能剖析可在配置时增加 `-DSGPU_ENABLE_NVTX=ON`；普通构建默认不引入 NVTX 开销。
-
 ## 输入格式
 
 每根基本线圈的 `x/y/z` 均使用奇数长度的实 Fourier 系数数组，电流单位必须显式给出。Flow 模型使用每个坐标 33 项，加一个电流，因此一根线圈对应 100 维 token。
@@ -72,14 +76,6 @@ Linux 默认产物为 `gpu_backend/build_native_score/libstellarator_gpu.so`。�
 `nfp` 个场周期和 stellarator symmetry 由评估器展开，输入中不应重复所有对称线圈。`examples/01.json` 是完整格式示例，不代表性能基准。
 
 ## 正式评分接口
-
-命令行单例 QH 评分：
-
-```bash
-python scripts/smoke_native_score.py examples/01.json \
-  --target QH \
-  --lib gpu_backend/build_native_score/libstellarator_gpu.so
-```
 
 Python 接口将数值模式和分数策略分开：
 

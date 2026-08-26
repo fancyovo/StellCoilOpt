@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+UNSUPPORTED_GITHUB_MATH = (r"\operatorname",)
 
 
 def markdown_files() -> list[Path]:
@@ -37,6 +38,13 @@ def test_markdown_blocks_are_balanced() -> None:
                 in_display_math = not in_display_math
         assert not in_fence, f"{path}: unclosed code fence"
         assert not in_display_math, f"{path}: unclosed display-math block"
+
+
+def test_markdown_avoids_unsupported_github_math_macros() -> None:
+    for path in markdown_files():
+        text = path.read_text(encoding="utf-8")
+        for macro in UNSUPPORTED_GITHUB_MATH:
+            assert macro not in text, f"{path}: GitHub rejects math macro {macro}"
 
 
 def test_local_markdown_links_exist() -> None:

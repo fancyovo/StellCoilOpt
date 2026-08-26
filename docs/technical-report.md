@@ -80,7 +80,7 @@ $$
 $$
 \det J_P>0,
 \qquad
-\frac{|\operatorname{tr}J_P|}{\sqrt{\det J_P}}<2,
+\frac{|\mathrm{tr}\,J_P|}{\sqrt{\det J_P}}<2,
 $$
 
 以选择椭圆固定点。严格续接评估从上一正式中心的 $(R_0,Z_0)$ 开始局部修正，并限制轴位移；拓扑或位移条件失败时返回 `branch_lost`。这个规则使连续优化轨迹始终对应同一磁轴分支。
@@ -200,7 +200,7 @@ $$
 \boldsymbol B=\nabla\psi\times\nabla\alpha.
 $$
 
-它同时给出 $\boldsymbol B\cdot\nabla\psi=0$ 和 $\boldsymbol B\cdot\nabla\alpha=0$。令 $\theta=\operatorname{atan2}(Y,X)$、$u=\rho^2=\psi/\psi_{\mathrm{edge}}$，直场线标记写为
+它同时给出 $\boldsymbol B\cdot\nabla\psi=0$ 和 $\boldsymbol B\cdot\nabla\alpha=0$。令 $\theta=\mathrm{atan2}(Y,X)$、$u=\rho^2=\psi/\psi_{\mathrm{edge}}$，直场线标记写为
 
 $$
 \alpha(\rho,\theta,\phi)
@@ -873,7 +873,7 @@ $$
 $$
 Q_s(x;s,b)=
 \begin{cases}
-W\!\left(\operatorname{clip}_{[0,1]}(x/s)\right),&x\ \text{有限且}\ x>0,\ s>0,\\
+W\!\left(\mathrm{clip}_{[0,1]}(x/s)\right),&x\ \text{有限且}\ x>0,\ s>0,\\
 b,&\text{其余情况},
 \end{cases}
 \qquad W(y)=y^2(3-2y).
@@ -894,7 +894,7 @@ $$
 
 $$
 \Delta_{\mathrm{elliptic}}
-=2-\frac{|\operatorname{tr}J|}{\sqrt{\det J}},
+=2-\frac{|\mathrm{tr}\,J|}{\sqrt{\det J}},
 \qquad
 q_{\mathrm{topology}}=
 \begin{cases}
@@ -952,7 +952,7 @@ $\iota$ 分量为
 
 $$
 q_{\iota}=
-\left[\operatorname{clip}_{[0,1]}
+\left[\mathrm{clip}_{[0,1]}
 \left(\frac{\iota_*}{1.0}\right)\right]^2.
 $$
 
@@ -1007,15 +1007,15 @@ $$
 令 $E_t$ 为目标 QH 单位螺旋模误差，$E_c=\min(E_{\mathrm{QA}},E_{\mathrm{QP}})$，竞争优势为
 
 $$
-h=\operatorname{clip}_{[0,1]}\left(
+h=\mathrm{clip}_{[0,1]}\left(
 \frac{E_c}{\max(E_t+E_c,10^{-300})}
 \right).
 $$
 
-定义 $x=\operatorname{clip}_{[0,1]}((h-0.10)/0.20)$，$W(x)=x^2(3-2x)$，则
+定义 $x=\mathrm{clip}_{[0,1]}((h-0.10)/0.20)$，$W(x)=x^2(3-2x)$，则
 
 $$
-q_h=0.20\operatorname{clip}_{[0,1]}\left(\frac{h}{0.30}\right)+0.80W(x),
+q_h=0.20\mathrm{clip}_{[0,1]}\left(\frac{h}{0.30}\right)+0.80W(x),
 $$
 
 $$
