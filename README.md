@@ -31,7 +31,7 @@ python scripts/smoke_native_score.py examples/01.json \
   --lib gpu_backend/build_native_score/libstellarator_gpu.so
 ```
 
-这个命令不需要 Flow 权重。Flow 筛选与优化需要自行准备训练数据和检查点；Simsopt 与 DESC 只在完整验收阶段需要。
+独立 QH 评分只依赖 CUDA 动态库和输入线圈。Flow 筛选与优化加载训练检查点，完整物理验收阶段再加载 Simsopt 与 DESC。
 
 ## 仓库内容
 
@@ -40,9 +40,9 @@ python scripts/smoke_native_score.py examples/01.json \
 - `flow_matching/`：条件 Flow Matching 模型、数据归一化、ODE 积分和已验证优化协议。
 - `scripts/`：评分、Flow 数据准备与训练、32 候选筛选、64 方向 Adam、标准磁面和 DESC 入口。
 - `evaluation/full_physical/`：候选的完整物理验收流程。
-- `tests/`：不依赖私有数据或训练权重的接口与数值单元测试。
+- `tests/`：使用公开样例运行的接口与数值单元测试。
 
-仓库不包含 QUASR 数据、训练权重、逐次实验数组、运行日志、集群提交脚本或私有基础设施配置。
+仓库提供可复现源码、公开样例和完整接口。训练流程通过外部路径挂载 QUASR 数据与 Flow 权重，集群运行时由部署环境提供 Slurm 脚本和实验输出目录。
 
 ## 数值主线
 
@@ -54,7 +54,7 @@ python scripts/smoke_native_score.py examples/01.json \
 4. 在体采样点上联合线性拟合 $\alpha$ 与三次 $\iota(\psi/\psi_{\mathrm{edge}})$ 。快速评分使用切向标量方程；完整验收支线使用向量 Clebsch 关系拟合 $\alpha+\nu$ 初值。
 5. 计算体 QA/QH/QP、有效体积、旋转变换和线圈工程量，并返回结构化元数据与默认 0--100 分数。
 
-快速分数是筛选与优化目标，不是标准磁面或 MHD 平衡存在性的证明。少量候选仍需运行 Simsopt LS/Newton、独立稠密检验、Poincare 追踪和 DESC。
+快速分数负责筛选与优化；Simsopt LS/Newton、独立稠密检验、Poincare 追踪和 DESC 共同构成候选的最终物理验收。
 
 ## 输入格式
 
@@ -73,7 +73,7 @@ python scripts/smoke_native_score.py examples/01.json \
 }
 ```
 
-`nfp` 个场周期和 stellarator symmetry 由评估器展开，输入中不应重复所有对称线圈。`examples/01.json` 是完整格式示例，不代表性能基准。
+评估器根据 `nfp` 和 stellarator symmetry 展开全部物理线圈，输入只需提供基本线圈。`examples/01.json` 展示完整数据格式；性能结果见技术报告的固定实验协议。
 
 ## 正式评分接口
 
@@ -96,15 +96,15 @@ continued = evaluator.evaluate(
 `Evaluator` 的两种模式都是正式评分：
 
 - `independent` 从线圈全局搜索磁轴，适合独立样本、随机起点和最终复评。
-- `strict_continuation` 只接受给定初值附近的同一磁轴分支，但完整重算其余物理量；分支不满足条件时返回 `branch_lost`，不会切换到另一根磁轴。
+- `strict_continuation` 在给定初值附近严格保持同一磁轴分支，并完整重算其余物理量；分支连续性失效时返回 `branch_lost`。
 
 `NeighborhoodEvaluator` 以一个正式中心为锚，批量评价附近有限差分端点。它会重算候选磁轴、 $s$ 、边界、 $\psi$ 、 $\alpha/\iota$ 和体 QS 的局部近似，但继承坐标分量并线性化线圈工程分量。其输出用于端点排序和方向导数；每个接受的新中心必须再经过 `strict_continuation` 正式评分。
 
-`EvaluationResult` 同时保存 `native_score`、七个分数组成、原始诊断量、逐阶段耗时、状态和调用配置。可用 `WeightedComponentPolicy` 或任意可调用对象从同一元数据构造用户分数，而不修改物理计算。
+`EvaluationResult` 同时保存 `native_score`、七个分数组成、原始诊断量、逐阶段耗时、状态和调用配置。`WeightedComponentPolicy` 或用户提供的可调用对象可以在同一物理元数据上构造不同分数策略。
 
 ## 已验证 QH 优化
 
-公开默认配置与技术报告中的 309 条优化轨迹一致，不使用历史两方向 SPSA：
+公开默认配置与技术报告中的 309 条 QH 优化轨迹一致：
 
 - 先独立评价 32 个 Flow 候选并选择最高有效分起点；
 - 运行 200 个 Adam 更新；
@@ -123,7 +123,7 @@ python scripts/screen_flow_starts.py \
   --nfp 4 --n-base-coils 3 --seed 1
 ```
 
-再从选中起点优化；下列命令不覆盖任何协议参数，因为 CLI 默认值已经锁定为上述配置：
+再从选中起点优化。CLI 默认值已经锁定为上述 309 条轨迹协议：
 
 ```bash
 python scripts/optimize_flow_latent.py \
@@ -135,7 +135,7 @@ python scripts/optimize_flow_latent.py \
   --flow-device 0 --score-device 0
 ```
 
-一条轨迹使用一张 GPU。扩展到多卡时，应由外部调度器让不同轨迹各占一张卡，而不是让单条轨迹隐式改变协议。
+一条轨迹使用一张 GPU。多卡运行由外部调度器为不同轨迹各分配一张卡，从而保持单轨迹协议和随机种子相互独立。
 
 ## Flow 训练
 
@@ -152,7 +152,7 @@ torchrun --standalone --nproc-per-node=4 scripts/train_qh_flow.py \
   --output-dir runs/flow
 ```
 
-训练目标采用直线概率路径。Transformer 对线圈 token 使用非因果注意力且不加位置编码， $N_{\mathrm{FP}}$ 通过条件嵌入输入。训练数据的使用与再分发必须遵守其原始许可。
+训练目标采用直线概率路径。Transformer 对线圈 token 使用置换等变的双向注意力， $N_{\mathrm{FP}}$ 通过条件嵌入输入。训练数据的使用与再分发遵循其原始许可。
 
 ## 完整物理验收
 
@@ -163,7 +163,7 @@ fit_alpha.py -> fit_nu.py -> solve_boozer_surface.py
              -> select_largest_standard_surface.py -> evaluate_surface.py
 ```
 
-每个新样本必须独立选择源拟合半径和候选磁面阶梯，不得复用另一样本的固定半径或标签值。完整验收应保存分数组成、面 QA/QH/QP、 $|B|$ 等高线、Poincare、三维线圈与磁面，以及可用的全部 DESC 诊断图。
+每个新样本均自适应选择源拟合半径和候选磁面阶梯。完整验收保存分数组成、面 QA/QH/QP、 $|B|$ 等高线、Poincare、三维线圈与磁面，以及可用的全部 DESC 诊断图。
 
 ## 验证
 
@@ -172,7 +172,7 @@ python -m compileall -q flow_matching stellarator_eval scripts gpu_backend/pytho
 python -m pytest -q
 ```
 
-Python 单元测试不需要模型权重。CUDA 数值测试需要已构建的动态库和可用 GPU；Simsopt/DESC 测试只在安装对应可选依赖后运行。
+Python 单元测试使用公开样例直接运行。CUDA 数值测试加载已构建的动态库和可用 GPU；安装对应可选依赖后还会运行 Simsopt/DESC 测试。
 
 ## 许可证
 
